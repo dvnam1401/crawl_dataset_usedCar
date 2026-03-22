@@ -3,9 +3,10 @@ import { VehicleInfo } from '../types/types';
 import { logger } from '../utils/logger';
 import { withRetry } from '../utils/retry';
 import { randomSleep } from '../utils/anti-blocking';
+import { extractDescription } from '../utils/description-extractor';
 
 export class VehicleDetailCrawler {
-  public async extractVehicleData(page: Page, url: string): Promise<{ info: VehicleInfo; imageUrls: string[] }> {
+  public async extractVehicleData(page: Page, url: string): Promise<{ info: VehicleInfo; imageUrls: string[]; descriptionHash: string }> {
     try {
       await withRetry(
         async () => {
@@ -19,8 +20,17 @@ export class VehicleDetailCrawler {
         `Navigate to detail page ${url}`
       );
 
+      // Extract raw description HTML from .description div (inside browser context)
+      const rawDescriptionHtml = await page.evaluate((): string => {
+        const descEl = document.querySelector('.description');
+        return descEl ? descEl.innerHTML : '';
+      });
+
+      // Normalize HTML → plain text (outside browser context, needs crypto)
+      const { text: descriptionText, hash: descriptionHash } = extractDescription(rawDescriptionHtml);
+
       // Extract Vehicle Info
-      const info = await page.evaluate((): VehicleInfo => {
+      const info = await page.evaluate((description: string): VehicleInfo => {
         // Hàm helper lấy text an toàn
         const getText = (selector: string): string => {
           const el = document.querySelector(selector);
@@ -52,6 +62,7 @@ export class VehicleDetailCrawler {
         return {
           title,
           price,
+          description,
           year: getSpec('Năm SX') || getSpec('năm sản xuất'),
           location: getSpec('Tỉnh thành') || getSpec('địa chỉ'),
           fuel: getSpec('Nhiên liệu'),
@@ -60,7 +71,7 @@ export class VehicleDetailCrawler {
           body_style: getSpec('Kiểu dáng'),
           origin: getSpec('Xuất xứ')
         };
-      });
+      }, descriptionText);
 
       // Bắt buộc fallback cho những trường rỗng nếu có thể regex từ title
       if (!info.year) {
@@ -139,7 +150,7 @@ export class VehicleDetailCrawler {
 
       logger.info(`Extracted data and ${imageUrls.length} images for ${url}`);
 
-      return { info, imageUrls };
+      return { info, imageUrls, descriptionHash };
       
     } catch (error) {
       logger.error(`Failed to extract data from ${url}`, error);

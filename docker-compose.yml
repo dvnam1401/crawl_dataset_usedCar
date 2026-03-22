@@ -1,0 +1,37 @@
+version: "3.9"
+
+# ================================================================
+#  oto-crawler – Docker Compose
+#  Dùng: docker compose run --rm crawler <lệnh>
+#  VD:   docker compose run --rm crawler crawl:categories
+# ================================================================
+
+services:
+  crawler:
+    image: oto-crawler:latest          # Dùng image đã build sẵn
+    # build: .                         # Bỏ comment dòng này nếu muốn build tại chỗ
+
+    # ── Volume: dữ liệu & log nằm trên máy HOST, không mất khi xoá container ──
+    volumes:
+      - ./crawler-data/data:/app/data
+      - ./crawler-data/logs:/app/logs
+
+    # ── Biến môi trường (tuỳ chỉnh) ──
+    environment:
+      - WORKERS=${WORKERS:-3}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - REQUEST_DELAY=${REQUEST_DELAY:-1500}
+      - PAGE_TIMEOUT=${PAGE_TIMEOUT:-30000}
+      - HEADLESS=${HEADLESS:-true}
+
+    # ── Tăng shared memory cho Chromium (tránh crash) ──
+    shm_size: "512mb"
+
+    # ── Không restart tự động (tool CLI, không phải service) ──
+    restart: "no"
+
+    # ── Giới hạn tài nguyên (tuỳ chỉnh theo máy) ──
+    deploy:
+      resources:
+        limits:
+          memory: 2g

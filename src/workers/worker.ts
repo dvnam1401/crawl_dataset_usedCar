@@ -124,9 +124,15 @@ export class Worker {
         return;
       }
       
-      // 1. Extract vehicle data + image URLs
-      const { info, imageUrls } = await vehicleDetailCrawler.extractVehicleData(page, url);
+      // 1. Extract vehicle data + image URLs + description
+      const { info, imageUrls, descriptionHash } = await vehicleDetailCrawler.extractVehicleData(page, url);
       
+      // Check description deduplication
+      if (descriptionHash && storageManager.isDescriptionDuplicate(descriptionHash)) {
+        logger.info(`Description hash duplicate for ${listingId}. Marking as [DUPLICATE].`);
+        info.description = '[DUPLICATE]';
+      }
+
       // Create storage folders
       const { vehicleFolder, imageFolder } = storageManager.createVehicleFolder(listingId);
       
@@ -142,6 +148,7 @@ export class Worker {
         source_url: url,
         images: downloadedImages,
         image_count: downloadedImages.length,
+        description_hash: descriptionHash,
         crawled_at: new Date().toISOString()
       };
       

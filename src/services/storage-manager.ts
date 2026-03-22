@@ -6,6 +6,8 @@ import { logger } from '../utils/logger';
 
 export class StorageManager {
   private config = getCrawlerConfig();
+  private descriptionHashes: Set<string> = new Set();
+  private hashesLoaded = false;
 
   constructor() {
     this.initStorage();
@@ -21,6 +23,47 @@ export class StorageManager {
       logger.error('Failed to initialize storage directories', error);
       throw error;
     }
+  }
+
+  /**
+   * Lazy-load description hashes from all existing vehicle.json files.
+   * Called once on first dedup check to avoid scanning at startup.
+   */
+  private loadDescriptionHashes(): void {
+    if (this.hashesLoaded) return;
+    try {
+      const vehiclesDir = this.config.directories.vehicles;
+      if (fs.existsSync(vehiclesDir)) {
+        const folders = fs.readdirSync(vehiclesDir);
+        for (const folder of folders) {
+          const jsonPath = join(vehiclesDir, folder, 'vehicle.json');
+          if (fs.existsSync(jsonPath)) {
+            try {
+              const data = fs.readJsonSync(jsonPath);
+              if (data.description_hash) {
+                this.descriptionHashes.add(data.description_hash);
+              }
+            } catch {
+              // Skip corrupted files
+            }
+          }
+        }
+        logger.info(`Loaded ${this.descriptionHashes.size} description hashes from storage`);
+      }
+    } catch (error) {
+      logger.error('Error loading description hashes', error);
+    }
+    this.hashesLoaded = true;
+  }
+
+  /**
+   * Check if a description hash already exists (deduplication).
+   * Thread-safe: Node.js is single-threaded, Set operations are atomic.
+   */
+  public isDescriptionDuplicate(hash: string): boolean {
+    if (!hash) return false;
+    this.loadDescriptionHashes();
+    return this.descriptionHashes.has(hash);
   }
 
   public createVehicleFolder(listingId: string): { vehicleFolder: string; imageFolder: string } {
@@ -53,6 +96,11 @@ export class StorageManager {
       fs.writeJsonSync(tempJsonPath, data, { spaces: 2 });
       // Atomic rename
       fs.renameSync(tempJsonPath, vehicleJsonPath);
+
+      // Track description hash for deduplication
+      if (data.description_hash) {
+        this.descriptionHashes.add(data.description_hash);
+      }
       
       logger.info(`Saved vehicle.json for ${data.listing_id} [cat: ${data.category_id}, sub: ${data.subcategory_id}]`);
     } catch (error) {
@@ -67,3 +115,4 @@ export class StorageManager {
 }
 
 export const storageManager = new StorageManager();
+

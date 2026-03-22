@@ -30,6 +30,7 @@ export interface SubcategoryTask {
 export interface VehicleInfo {
   title: string;
   price: string;
+  description: string;
   year: string;
   location: string;
   fuel: string;
@@ -53,6 +54,7 @@ export interface VehicleData {
   source_url: string;
   images: ImageInfo[];
   image_count: number;
+  description_hash: string;
   crawled_at: string;
 }
 
